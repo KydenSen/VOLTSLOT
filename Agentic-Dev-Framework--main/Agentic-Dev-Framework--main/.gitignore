@@ -1,0 +1,26 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (if project uses it)
+node_modules/
+
+# Python (if project uses it)
+__pycache__/
+*.pyc
+.env
+venv/
+
+# Logs
+*.log
+
+# Scripts with secrets
+update-repo-metadata.ps1
