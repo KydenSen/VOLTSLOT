@@ -6,7 +6,7 @@ import { Check, X, Clock } from "lucide-react";
 const BookingManagement = () => {
   const { bookings } = useBooking();
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "completed" | "cancelled">("all");
-  const [filterPayment, setFilterPayment] = useState<"all" | "pending" | "paid" | "refunded">("all");
+  const [filterPayment, setFilterPayment] = useState<"all" | "paid">("all");
 
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
@@ -21,7 +21,6 @@ const BookingManagement = () => {
     active: bookings.filter((b) => b.status === "active").length,
     completed: bookings.filter((b) => b.status === "completed").length,
     cancelled: bookings.filter((b) => b.status === "cancelled").length,
-    pending: bookings.filter((b) => b.payment_status === "pending").length,
   }), [bookings]);
 
   const getStatusBadge = (status: string) => {
@@ -35,17 +34,15 @@ const BookingManagement = () => {
 
   const getPaymentBadge = (status: string) => {
     const badges: Record<string, { bg: string; text: string }> = {
-      pending: { bg: "bg-yellow-500/20", text: "text-yellow-400" },
       paid: { bg: "bg-green-500/20", text: "text-green-400" },
-      refunded: { bg: "bg-gray-500/20", text: "text-gray-400" },
     };
-    return badges[status] || badges.pending;
+    return badges[status] || badges.paid;
   };
 
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 backdrop-blur-sm">
           <p className="text-gray-400 text-sm mb-2">Total Bookings</p>
           <p className="text-3xl font-bold text-cyan-400">{stats.total}</p>
@@ -61,10 +58,6 @@ const BookingManagement = () => {
         <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 backdrop-blur-sm">
           <p className="text-gray-400 text-sm mb-2">Cancelled</p>
           <p className="text-3xl font-bold text-red-400">{stats.cancelled}</p>
-        </div>
-        <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 backdrop-blur-sm">
-          <p className="text-gray-400 text-sm mb-2">Pending Payment</p>
-          <p className="text-3xl font-bold text-yellow-400">{stats.pending}</p>
         </div>
       </div>
 
@@ -91,9 +84,7 @@ const BookingManagement = () => {
             className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
           >
             <option value="all">All Payments</option>
-            <option value="pending">Pending</option>
             <option value="paid">Paid</option>
-            <option value="refunded">Refunded</option>
           </select>
         </div>
       </div>
@@ -112,7 +103,6 @@ const BookingManagement = () => {
                 <th className="text-left py-4 px-6 text-gray-400 font-medium">Amount</th>
                 <th className="text-left py-4 px-6 text-gray-400 font-medium">Status</th>
                 <th className="text-left py-4 px-6 text-gray-400 font-medium">Payment</th>
-                <th className="text-left py-4 px-6 text-gray-400 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -143,18 +133,6 @@ const BookingManagement = () => {
                       <span className={`px-2 py-1 rounded text-xs font-medium ${paymentBadge.bg} ${paymentBadge.text}`}>
                         {booking.payment_status}
                       </span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300 text-xs">
-                          View
-                        </Button>
-                        {booking.status === "active" && (
-                          <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 text-xs">
-                            Cancel
-                          </Button>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 );

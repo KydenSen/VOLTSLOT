@@ -4,8 +4,18 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Zap, TrendingUp, TrendingDown } from "lucide-react";
 
 const LoadManagement = () => {
-  const { stations, chargers, bookings } = useBooking();
-  const [maxLoadThreshold, setMaxLoadThreshold] = useState(500);
+  const { stations, chargers, bookings, settings, updateSettings } = useBooking();
+  const [maxLoadThreshold, setMaxLoadThreshold] = useState(settings.maxLoadThreshold || 500);
+
+  React.useEffect(() => {
+    setMaxLoadThreshold(settings.maxLoadThreshold || 500);
+  }, [settings.maxLoadThreshold]);
+
+  const handleThresholdBlur = () => {
+    if (maxLoadThreshold !== settings.maxLoadThreshold) {
+      updateSettings({ maxLoadThreshold });
+    }
+  };
   const [priorityMode, setPriorityMode] = useState<"balanced" | "fast" | "normal">("balanced");
 
   const loadStats = useMemo(() => {
@@ -154,6 +164,7 @@ const LoadManagement = () => {
                   type="number"
                   value={maxLoadThreshold}
                   onChange={(e) => setMaxLoadThreshold(Number(e.target.value))}
+                  onBlur={handleThresholdBlur}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50"
                 />
                 <p className="text-xs text-gray-500 mt-1">System will trigger alerts if exceeded</p>

@@ -21,7 +21,7 @@ interface PaymentDialogProps {
 }
 
 const PaymentDialog: React.FC<PaymentDialogProps> = ({ open, onOpenChange, station, slot, chargerType, durationMin, totalPrice, onSuccess }) => {
-  const { bookSlot } = useBooking();
+  const { bookSlot, settings } = useBooking();
   const [processing, setProcessing] = useState(false);
   const [upiId, setUpiId] = useState("");
 
@@ -103,7 +103,7 @@ const PaymentDialog: React.FC<PaymentDialogProps> = ({ open, onOpenChange, stati
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm font-semibold">Total Amount</span>
-                <p className="text-xs text-muted-foreground">₹{chargerType === "fast" ? 5 : 2}/min × {durationMin} min</p>
+                <p className="text-xs text-muted-foreground">₹{chargerType === "fast" ? settings.fastChargerPricePerMin : settings.normalChargerPricePerMin}/min × {durationMin} min</p>
               </div>
               <span className="text-xl font-extrabold text-primary">₹{totalPrice}</span>
             </div>

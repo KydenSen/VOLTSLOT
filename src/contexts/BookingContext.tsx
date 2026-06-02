@@ -36,6 +36,9 @@ export const DEFAULT_SETTINGS: GlobalSettings = {
   enablePredictiveAnalytics: true,
   enableDynamicPricing: false,
 };
+// Backwards-compatible aliases used in mock data
+const PRICE_NORMAL = DEFAULT_SETTINGS.normalChargerPricePerMin;
+const PRICE_FAST = DEFAULT_SETTINGS.fastChargerPricePerMin;
 // 14 Mysore stations
 const MOCK_STATIONS: Station[] = [
   { id: "11111111-1111-1111-1111-111111111101", name: "VoltSlot Mysore Palace", address: "Sayyaji Rao Rd, Agrahara, Mysore", latitude: 12.3052, longitude: 76.6552, total_chargers: 4 },
@@ -257,7 +260,7 @@ function buildSlots(date: string, chargerId: string, bookings: Booking[], dbSlot
   return out;
 }
 
-function buildStationSlots(date: string, stationId: string, chargers: Charger[], bookings: Booking[], chargerType: ChargerType, durationMin: number, dbSlots: DBSlot[], stations: Station[]): TimeSlot[] {
+function buildStationSlots(date: string, stationId: string, chargers: Charger[], bookings: Booking[], chargerType: ChargerType, durationMin: number, dbSlots: DBSlot[], stations: Station[], settings: GlobalSettings): TimeSlot[] {
   const station = stations.find(s => s.id === stationId);
   const isMaintenance = station?.status === "maintenance";
   const stationChargers = chargers.filter((c) => c.station_id === stationId && c.status !== "maintenance" && c.charger_type === chargerType);
@@ -288,14 +291,22 @@ function buildStationSlots(date: string, stationId: string, chargers: Charger[],
     const [startHours, startMinutes] = slotStart.split(":").map(Number);
     const exceedsDay = startHours * 60 + startMinutes + durationMin > 24 * 60;
 
+    const overlappingStationBookings = bookings.filter((b) => {
+      if (b.station_id !== stationId || b.date !== date || b.status !== "active") return false;
+      const bStart = toIso(b.start_time ?? '', b.date ?? date);
+      const bEnd = toIso(b.end_time ?? '', b.date ?? date);
+      return Date.parse(startIso) < Date.parse(bEnd) && Date.parse(endIso) > Date.parse(bStart);
+    });
+    const projectedLoad = overlappingStationBookings.reduce((sum, b) => {
+      const c = chargers.find(ch => ch.id === b.charger_id);
+      return sum + (c?.power_kw || 0);
+    }, 0);
+    const stationLoadLimit = settings.maxLoadThreshold;
+
     const availableChargers = stationChargers.filter((c) => {
-      const hasConflict = bookings.some((b) => {
-        if (b.charger_id !== c.id || b.date !== date || b.status !== "active") return false;
-        const bStart = toIso(b.start_time ?? '', b.date ?? date);
-        const bEnd = toIso(b.end_time ?? '', b.date ?? date);
-        return Date.parse(startIso) < Date.parse(bEnd) && Date.parse(endIso) > Date.parse(bStart);
-      });
-      return !hasConflict;
+      const hasConflict = overlappingStationBookings.some((b) => b.charger_id === c.id);
+      const wouldOverload = (projectedLoad + c.power_kw) > stationLoadLimit;
+      return !hasConflict && !wouldOverload;
     });
 
     const status = slotExpired || exceedsDay || isMaintenance
@@ -537,6 +548,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       fbChargersRef.current = chargersData;
       applyFirebaseData();
     });
+    const unsubPayments = onSnapshot(collection(db, "payments"), (snap) => {
       setPayments(snap.docs.map((d) => ({
         id: d.id,
         booking_id: d.data().bookingId,
@@ -563,7 +575,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
 
   const getSlots = (date: string, chargerId: string) => buildSlots(date, chargerId, bookings, dbSlots, chargers, stations);
   const getStationSlots = (date: string, stationId: string, chargerType: ChargerType, durationMin: number) => {
-    return buildStationSlots(date, stationId, chargers, bookings, chargerType, durationMin, dbSlots, stations);
+    return buildStationSlots(date, stationId, chargers, bookings, chargerType, durationMin, dbSlots, stations, settings);
   };
 
   const computePrice = (chargerType: ChargerType, durationMin: number): number => {
@@ -594,17 +606,26 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // Find the right charger for this type at this station
+    const endTime = addMinutes(slot.startTime, durationMin);
+    const overlappingStationBookings = bookings.filter(b => {
+      if (b.station_id !== slot.stationId || b.date !== slot.date || b.status !== "active") return false;
+      return slot.startTime < b.end_time && endTime > b.start_time;
+    });
+    const projectedLoad = overlappingStationBookings.reduce((sum, b) => {
+      const c = chargers.find(ch => ch.id === b.charger_id);
+      return sum + (c?.power_kw || 0);
+    }, 0);
+    const stationLoadLimit = settings.maxLoadThreshold;
+
     const stChargers = chargers.filter(c => c.station_id === slot.stationId && c.charger_type === chargerType && c.status !== "maintenance");
-    const availableCharger = stChargers.find(c =>
-      !bookings.some(b => {
-        if (b.charger_id !== c.id || b.date !== slot.date || b.status !== "active") return false;
-        const endTime = addMinutes(slot.startTime, durationMin);
-        return slot.startTime < b.end_time && endTime > b.start_time;
-      })
-    );
+    const availableCharger = stChargers.find(c => {
+      const hasConflict = overlappingStationBookings.some(b => b.charger_id === c.id);
+      const wouldOverload = (projectedLoad + c.power_kw) > stationLoadLimit;
+      return !hasConflict && !wouldOverload;
+    });
     if (!availableCharger) return { ok: false, error: "No charger available for this time" };
 
-    const endTime = addMinutes(slot.startTime, durationMin);
+    // endTime already calculated above
     const amount = computePrice(chargerType, durationMin);
 
     const bookingId = crypto.randomUUID();

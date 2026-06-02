@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { MapContainer, TileLayer, Marker, useMap, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap, Popup, Polyline, Circle, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { useBooking } from "@/contexts/BookingContext";
 import { Station } from "@/types";
@@ -156,6 +156,16 @@ function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null
   return null;
 }
 
+// Allow clicking on the map to manually set location
+function MapClickTracker({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
 interface StationMapProps {
   onSelectStation: (station: Station) => void;
   filteredStations?: Station[];
@@ -181,6 +191,24 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
   const [permissionDenied, setPermissionDenied] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
   const locateBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Initialize locate button state once ref is available
+  useEffect(() => {
+    if (locateBtnRef.current) setLocateBtnState('idle');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locateBtnRef.current]);
+
+  // When userLocation is set manually (not live tracking), ensure the map recenters
+  useEffect(() => {
+    if (!userLocation || isTracking) return;
+    if (mapRef.current) {
+      try {
+        mapRef.current.flyTo(userLocation, 13, { duration: 0.8 });
+      } catch (e) {
+        // ignore if map not ready
+      }
+    }
+  }, [userLocation, isTracking]);
 
   // Common locations in Mysore
   const koorgalliLocations = [
@@ -265,100 +293,7 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
     return sorted;
   };
 
-  // Draw user location marker and accuracy circle on map
-  const drawUserLocation = (lat: number, lng: number, acc: number, map: L.Map) => {
-    setAccuracy(acc);
-
-    // Update or create user marker
-    if (userMarker) {
-      userMarker.setLatLng([lat, lng]);
-    } else {
-      const newMarker = L.marker([lat, lng], {
-        icon: createUserLocationIcon(),
-        zIndexOffset: 1000,
-      }).addTo(map);
-
-      newMarker.bindPopup(`
-        <div style="
-          background:#111820; color:#e8edf2;
-          font-family:'Space Grotesk',sans-serif;
-          font-size:13px; padding:10px 14px;
-          border-radius:8px; min-width:160px;
-        ">
-          <div style="font-weight:700; margin-bottom:4px;">📍 Your Location</div>
-          <div style="color:#5a7a94; font-size:11px; 
-            font-family:'JetBrains Mono',monospace;">
-            ${lat.toFixed(5)}, ${lng.toFixed(5)}
-          </div>
-          <div style="color:#00e676; font-size:11px; margin-top:6px;">
-            Accuracy: ±${Math.round(acc)}m
-          </div>
-        </div>
-      `);
-
-      setUserMarker(newMarker);
-    }
-
-    // Update or create accuracy circle
-    if (accuracyCircle) {
-      accuracyCircle.setLatLng([lat, lng]);
-      accuracyCircle.setRadius(acc);
-    } else {
-      const newCircle = L.circle([lat, lng], {
-        radius: acc,
-        color: '#00e676',
-        fillColor: '#00e676',
-        fillOpacity: 0.06,
-        weight: 1,
-        dashArray: '4 4',
-      }).addTo(map);
-      setAccuracyCircle(newCircle);
-    }
-  };
-
-  // Draw lines from user to nearest stations
-  const drawDistanceLines = (userLat: number, userLng: number, map: L.Map, sorted: Array<Station & { distance_km: number }>) => {
-    // Remove old lines
-    distanceLines.forEach((line) => map.removeLayer(line));
-
-    const newLines: Array<L.Polyline | L.Marker> = [];
-
-    sorted.forEach((station, index) => {
-      const color = index === 0 ? '#00e676'
-                  : index === 1 ? '#ffb300'
-                  : 'rgba(90,122,148,0.4)';
-
-      const weight = index === 0 ? 2 : 1;
-      const dashArray = index === 0 ? '6 4' : '3 6';
-
-      const line = L.polyline(
-        [[userLat, userLng], [station.latitude, station.longitude]],
-        { color, weight, dashArray, opacity: index < 3 ? 0.8 : 0.3 }
-      ).addTo(map);
-
-      newLines.push(line);
-
-      // Distance label at midpoint (only for top 3)
-      if (index < 3) {
-        const midLat = (userLat + station.latitude) / 2;
-        const midLng = (userLng + station.longitude) / 2;
-        const label = L.divIcon({
-          className: '',
-          html: `<div style="
-            background:#111820cc; color:${color};
-            font-family:'JetBrains Mono',monospace; font-size:10px;
-            padding:2px 6px; border-radius:4px;
-            border:1px solid ${color}55; white-space:nowrap;
-          ">${station.distance_km.toFixed(1)} km</div>`,
-          iconAnchor: [20, 10],
-        });
-        const labelMarker = L.marker([midLat, midLng], { icon: label }).addTo(map);
-        newLines.push(labelMarker);
-      }
-    });
-
-    setDistanceLines(newLines);
-  };
+  // (Imperative marker rendering removed in favor of declarative React-Leaflet components)
 
   // Update button state
   const setLocateBtnState = (state: 'idle' | 'acquiring' | 'active') => {
@@ -402,19 +337,7 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
         setWatchId(null);
       }
       setIsTracking(false);
-
-      if (userMarker && mapRef.current) {
-        mapRef.current.removeLayer(userMarker);
-        setUserMarker(null);
-      }
-      if (accuracyCircle && mapRef.current) {
-        mapRef.current.removeLayer(accuracyCircle);
-        setAccuracyCircle(null);
-      }
-      if (mapRef.current) {
-        distanceLines.forEach((l) => mapRef.current?.removeLayer(l));
-      }
-      setDistanceLines([]);
+      setNearestStations([]);
       setShowNearestCard(false);
       setLocateBtnState('idle');
       setLocationError("Location tracking stopped");
@@ -423,8 +346,27 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
 
     // START tracking
     setLocateBtnState('acquiring');
-    setLocationError("Acquiring GPS signal...");
+    setLocationError("Acquiring precise GPS signal...");
 
+    // STAGE 1 — Try to get a quick precise fix from the device GPS chipset
+    // Request high-accuracy immediately to prefer device GPS over IP/WiFi heuristics.
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy: acc } = position.coords;
+        setUserLocation([latitude, longitude]);
+        setAccuracy(acc);
+        if (mapRef.current) {
+          const sorted = getNearestStations(latitude, longitude);
+          setNearestStations(sorted);
+          setShowNearestCard(true);
+          if (acc > 1000) setLocationError("Rough location acquired. Waiting for more accurate GPS fix...");
+        }
+      },
+      () => {}, // Ignore errors for stage 1
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+
+    // STAGE 2 — Precise GPS tracking (Device Hardware)
     const options = {
       enableHighAccuracy: true,
       timeout: 10000,
@@ -433,21 +375,22 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
 
     const newWatchId = navigator.geolocation.watchPosition(
       (position) => {
-        const { latitude, longitude, accuracy: acc } = position.coords;
+        let { latitude, longitude, accuracy: acc } = position.coords;
+        
+        // Use the device-provided coordinates directly (prefer GPS chipset)
         setIsTracking(true);
         setLocateBtnState('active');
         setUserLocation([latitude, longitude]);
+        setAccuracy(acc);
 
         if (mapRef.current) {
-          drawUserLocation(latitude, longitude, acc, mapRef.current);
           const sorted = getNearestStations(latitude, longitude);
           setNearestStations(sorted);
-          drawDistanceLines(latitude, longitude, mapRef.current, sorted);
           setShowNearestCard(true);
           setLocationError(null);
 
           // Fly map to show user + nearest station
-          if (!mapRef.current._userHasBeenShown) {
+          if (!mapRef.current._userHasBeenShown && acc < 200) {
             const nearest = sorted[0];
             const bounds = L.latLngBounds(
               [latitude, longitude],
@@ -455,7 +398,11 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
             ).pad(0.3);
             mapRef.current.flyToBounds(bounds, { duration: 1.5 });
             mapRef.current._userHasBeenShown = true;
-            setLocationError(`Nearest: ${nearest.name} (${nearest.distance_km.toFixed(1)} km)`);
+            
+            // Show accuracy status
+            if (acc < 50) setLocationError(null); // Success Toast equivalent
+            else if (acc < 500) setLocationError(`GPS signal fair · ±${Math.round(acc)}m`);
+            else setLocationError(`Low accuracy · ±${Math.round(acc)}m · Go near a window`);
           }
         }
       },
@@ -562,8 +509,17 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
                   key={loc.name}
                   onClick={() => {
                     setUserLocation(loc.coords);
+                    const sorted = getNearestStations(loc.coords[0], loc.coords[1]);
+                    setNearestStations(sorted);
+                    setShowNearestCard(true);
                     setShowLocationMenu(false);
                     setLocationError(null);
+                    if (isTracking && watchId !== null) {
+                      navigator.geolocation.clearWatch(watchId);
+                      setWatchId(null);
+                      setIsTracking(false);
+                      setLocateBtnState('idle');
+                    }
                   }}
                   className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm font-medium border border-border/50 hover:border-primary/50"
                 >
@@ -595,9 +551,44 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
           )}
 
           {locationError && !permissionDenied && (
-            <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-xs text-destructive max-w-[240px] font-medium shadow-lg">
-              {locationError}
-              <div className="text-[11px] mt-1 opacity-80">Use manual location (📍) if GPS fails</div>
+            <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-3 text-xs text-destructive max-w-[280px] font-medium shadow-lg backdrop-blur-md">
+              <div className="mb-2 font-bold">{locationError}</div>
+              <div className="text-[11px] mb-2 opacity-90 text-destructive/90">GPS unavailable — set your location manually</div>
+              <div className="flex flex-wrap gap-2">
+                <button 
+                  onClick={() => {
+                    setUserLocation([12.3051, 76.6551]); // Mysuru
+                    const sorted = getNearestStations(12.3051, 76.6551);
+                    setNearestStations(sorted);
+                    setShowNearestCard(true);
+                    setLocationError(null);
+                    if (mapRef.current) mapRef.current.flyTo([12.3051, 76.6551], 13);
+                  }}
+                  className="bg-destructive/20 hover:bg-destructive/30 border border-destructive/40 text-destructive px-2 py-1.5 rounded transition-colors"
+                >📍 Mysuru</button>
+                <button 
+                  onClick={() => {
+                    setUserLocation([12.9716, 77.5946]); // Bengaluru
+                    const sorted = getNearestStations(12.9716, 77.5946);
+                    setNearestStations(sorted);
+                    setShowNearestCard(true);
+                    setLocationError(null);
+                    if (mapRef.current) mapRef.current.flyTo([12.9716, 77.5946], 13);
+                  }}
+                  className="bg-destructive/20 hover:bg-destructive/30 border border-destructive/40 text-destructive px-2 py-1.5 rounded transition-colors"
+                >📍 Bengaluru</button>
+                <button 
+                  onClick={() => {
+                    setUserLocation([13.0827, 80.2707]); // Chennai
+                    const sorted = getNearestStations(13.0827, 80.2707);
+                    setNearestStations(sorted);
+                    setShowNearestCard(true);
+                    setLocationError(null);
+                    if (mapRef.current) mapRef.current.flyTo([13.0827, 80.2707], 13);
+                  }}
+                  className="bg-destructive/20 hover:bg-destructive/30 border border-destructive/40 text-destructive px-2 py-1.5 rounded transition-colors"
+                >📍 Chennai</button>
+              </div>
             </div>
           )}
           {trackingState === 'acquiring' && (
@@ -608,12 +599,11 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
         </div>
       </div>
 
-      {/* Nearest station card */}
-      {showNearestCard && nearestStations.length > 0 && (
-        <div style={{
-          position: "absolute",
-          bottom: "12px",
-          left: "12px",
+        {showNearestCard && nearestStations.length > 0 && (
+          <div style={{
+            position: "absolute",
+            bottom: "12px",
+            left: "12px",
           right: "12px",
           background: '#111820',
           border: '1px solid #00e676',
@@ -689,18 +679,99 @@ const StationMap: React.FC<StationMapProps> = ({ onSelectStation, filteredStatio
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
+        <MapClickTracker onMapClick={(lat, lng) => {
+          setUserLocation([lat, lng]);
+          const sorted = getNearestStations(lat, lng);
+          setNearestStations(sorted);
+          setShowNearestCard(true);
+          setLocationError(null);
+          // Stop live tracking if manual is selected
+          if (isTracking && watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            setWatchId(null);
+            setIsTracking(false);
+            setLocateBtnState('idle');
+          }
+        }} />
         <MapRefCapture mapRef={mapRef} />{/* Capture map ref */}
         <MapFollowUser userLocation={userLocation} active={isTracking} />
 
-        {/* User's Live Location with pulsing effect */}
+        {/* User's Location (Live or Manual) */}
         {userLocation && (
-          <Marker position={userLocation} icon={createUserLocationIcon()}>
+          <Marker position={userLocation} icon={createUserLocationIcon()} zIndexOffset={1000}>
             <Popup>
-              <div className="text-center font-semibold text-sm">
-                {isTracking ? '📍 Your Location (Live)' : '📍 Your Location'}
+              <div style={{ background: '#111820', color: '#e8edf2', fontFamily: 'Space Grotesk, sans-serif', fontSize: '13px', padding: '10px 14px', borderRadius: '8px', minWidth: '160px' }}>
+                <div style={{ fontWeight: 700, marginBottom: '4px' }}>
+                  {isTracking ? '📍 Your Location (Live)' : '📍 Your Location'}
+                </div>
+                <div style={{ color: '#5a7a94', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {userLocation[0].toFixed(5)}, {userLocation[1].toFixed(5)}
+                </div>
+                {accuracy > 0 && isTracking && (
+                  <div style={{ color: '#00e676', fontSize: '11px', marginTop: '6px' }}>
+                    Accuracy: ±{Math.round(accuracy)}m
+                  </div>
+                )}
               </div>
             </Popup>
           </Marker>
+        )}
+        
+        {/* Accuracy Circle */}
+        {userLocation && accuracy > 0 && isTracking && (
+          <Circle 
+            center={userLocation} 
+            radius={accuracy} 
+            pathOptions={{ color: '#00e676', fillColor: '#00e676', fillOpacity: 0.06, weight: 1, dashArray: '4 4' }} 
+          />
+        )}
+
+        {/* Distance Lines */}
+        {userLocation && nearestStations.length > 0 && nearestStations.map((station, index) => {
+          const color = index === 0 ? '#00e676' : index === 1 ? '#ffb300' : 'rgba(90,122,148,0.4)';
+          const weight = index === 0 ? 2 : 1;
+          const dashArray = index === 0 ? '6 4' : '3 6';
+          const midLat = (userLocation[0] + station.latitude) / 2;
+          const midLng = (userLocation[1] + station.longitude) / 2;
+          
+          return (
+            <React.Fragment key={`line-${station.id}`}>
+              <Polyline 
+                positions={[userLocation, [station.latitude, station.longitude]]}
+                pathOptions={{ color, weight, dashArray, opacity: index < 3 ? 0.8 : 0.3 }}
+              />
+              {index < 3 && (
+                <Marker 
+                  position={[midLat, midLng]} 
+                  icon={L.divIcon({
+                    className: '',
+                    html: `<div style="background:#111820cc; color:${color}; font-family:'JetBrains Mono',monospace; font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid ${color}55; white-space:nowrap;">${station.distance_km.toFixed(1)} km</div>`,
+                    iconAnchor: [20, 10],
+                  })} 
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        {/* GPS Accuracy Badge */}
+        {userLocation && accuracy > 0 && (
+          <div style={{
+            position: 'absolute', bottom: showNearestCard ? '90px' : '12px', left: '12px', zIndex: 1000,
+            background: '#111820cc', backdropFilter: 'blur(8px)',
+            border: '1px solid #1e2d3d', borderRadius: '8px',
+            padding: '6px 12px', fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '11px', display: 'flex', alignItems: 'center', transition: 'bottom 0.3s'
+          }}>
+            <span style={{
+              display: 'inline-block', width: '6px', height: '6px',
+              borderRadius: '50%', marginRight: '6px',
+              background: accuracy < 50 ? '#00e676' : accuracy < 500 ? '#ffb300' : '#f44336'
+            }}></span>
+            <span style={{ color: accuracy < 50 ? '#00e676' : accuracy < 500 ? '#ffb300' : '#f44336', fontWeight: 600 }}>
+              {accuracy < 50 ? `GPS · ±${Math.round(accuracy)}m` : accuracy < 500 ? `WiFi · ±${Math.round(accuracy)}m` : `IP only · ±${Math.round(accuracy/1000)}km`}
+            </span>
+          </div>
         )}
 
         <FitBounds stations={displayStations} userLocation={userLocation ?? undefined} />

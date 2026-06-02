@@ -18,7 +18,7 @@ interface StationBottomSheetProps {
 }
 
 const StationBottomSheet: React.FC<StationBottomSheetProps> = ({ station, onClose, onSwitchStation, onViewBookings }) => {
-  const { getStationSlots, getStationChargerCounts, computePrice } = useBooking();
+  const { getStationSlots, getStationChargerCounts, computePrice, settings } = useBooking();
   const [date, setDate] = useState<Date>(new Date());
   const [chargerType, setChargerType] = useState<ChargerType>("normal");
   const [durationMin, setDurationMin] = useState(60);
@@ -147,7 +147,7 @@ const StationBottomSheet: React.FC<StationBottomSheetProps> = ({ station, onClos
                     <span className="font-semibold text-sm">Normal</span>
                   </div>
                   <p className="text-xs text-muted-foreground">7.4 kW AC • ~25 km/hr</p>
-                  <p className="text-sm font-bold text-blue-500 mt-1">₹2/min</p>
+                  <p className="text-sm font-bold text-blue-500 mt-1">₹{settings.normalChargerPricePerMin}/min</p>
                 </button>
                 <button
                   onClick={() => setChargerType("fast")}
@@ -163,7 +163,7 @@ const StationBottomSheet: React.FC<StationBottomSheetProps> = ({ station, onClos
                     <span className="font-semibold text-sm">Fast</span>
                   </div>
                   <p className="text-xs text-muted-foreground">50 kW DC • ~200 km/hr</p>
-                  <p className="text-sm font-bold text-amber-500 mt-1">₹5/min</p>
+                  <p className="text-sm font-bold text-amber-500 mt-1">₹{settings.fastChargerPricePerMin}/min</p>
                 </button>
               </div>
             </div>
@@ -293,7 +293,7 @@ const StationBottomSheet: React.FC<StationBottomSheetProps> = ({ station, onClos
                       <p className="text-2xl font-extrabold text-primary">₹{price}</p>
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
-                      <p>₹{chargerType === "fast" ? 5 : 2}/min × {durationMin} min</p>
+                      <p>₹{chargerType === "fast" ? settings.fastChargerPricePerMin : settings.normalChargerPricePerMin}/min × {durationMin} min</p>
                     </div>
                   </div>
                 </>

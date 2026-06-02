@@ -169,15 +169,7 @@ const AdminSettings = () => {
         </div>
       </div>
 
-      {/* Security */}
-      <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-6 backdrop-blur-sm">
-        <h3 className="text-lg font-bold text-white mb-4">🔒 Security</h3>
-        <div className="space-y-3">
-          <Button className="w-full bg-blue-600 hover:bg-blue-700 justify-start">Change Admin Password</Button>
-          <Button className="w-full bg-slate-700 hover:bg-slate-600 justify-start">View API Keys</Button>
-          <Button className="w-full bg-slate-700 hover:bg-slate-600 justify-start">Audit Logs</Button>
-        </div>
-      </div>
+
 
       {/* Save Button */}
       <div className="flex justify-end gap-3">
